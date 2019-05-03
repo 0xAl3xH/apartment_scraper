@@ -15,4 +15,5 @@ The script can be called periodically as a cron job or something similar.
 ### Install
     virtualenv venv -p python3
     pip install -r requirements.txt
+    . venv/bin/activate
     python scraper.py
