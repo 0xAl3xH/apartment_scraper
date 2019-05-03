@@ -1,3 +1,5 @@
+import pickle
+
 from config import config
 
 TW_SID = config["tw_sid"]
@@ -17,19 +19,27 @@ class ApartmentSpider(scrapy.Spider):
     name = "apartment_spider"
     start_urls = ["https://www.equityapartments.com/boston/central-square/church-corner-apartments##unit-availability-tile"]
 
-    # helper method to send an alert via SMS or email
     @staticmethod
-    def alert(listing):
+    def alert(listing, message):
+        '''
+        Helper method to send an alert via SMS or email
+        listing: dictionary of availability date and price of listing
+        message: string, either "added" or "removed" to tell if the listing was added or removed
+        '''
         for number in NUMBERS:
             client.messages.create( 
-                    body = "A listing at Church Corner Apartments for " + listing["Availability"] + " with rent " + listing["Price"] + " has been posted! ",
+                body = "A listing at Church Corner Apartments for " + listing["Availability"] + " with rent " + listing["Price"] + " has been " + message + "!",
                 from_ = TW_NUMBER,
                 to = number
             )
 
-    # parases the response 
     def parse(self, res):
+        '''
+        Parses the response
+        res: a scrapy response object
+        '''
         global num_listings
+        all_listings = []
         #get the listings, which are in li elements
         SELECTOR = '#bedroom-type-2 ul li'
         
@@ -50,8 +60,40 @@ class ApartmentSpider(scrapy.Spider):
                         # get the date string that should be in the form month/day/year
                         date_string = keyword.strip().split()[1]
                         listing_result = {"Availability": keyword.strip().split()[1], "Price":price}
-                        ApartmentSpider.alert(listing_result)
+                        all_listings.append(listing_result)
                         yield listing_result
+
+        ApartmentSpider.check_diff_listings(all_listings)
+
+    # check difference between newest listings seen and previous listings
+    @staticmethod
+    def check_diff_listings(new_listings):
+        '''
+        Check difference between newest listings seen and previous listings.
+        Previous listings are stored in "listings.p"
+        new_listings: list of dictionaries of listings, where each dictionary has
+                      availability date and price of listing
+        '''
+
+        # get previous listings if any
+        try:
+            previous_listings = pickle.load(open('listings.p', 'rb'))
+        except:
+            previous_listings = []
+
+        # look for listings that were removed
+        for previous_listing in previous_listings:
+            if previous_listing not in new_listings:
+                ApartmentSpider.alert(previous_listing, "removed")
+
+        # look for listings that were added
+        for new_listing in new_listings:
+            if new_listing not in previous_listings:
+                ApartmentSpider.alert(new_listing, "added")
+
+        # overwrite listings file
+        pickle.dump(new_listings, open('listings.p', 'wb')) 
+
 
 if __name__ == "__main__":
     process = CrawlerProcess({
